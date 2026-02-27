@@ -1,14 +1,16 @@
 import { useParams, Link } from 'react-router-dom';
-import { useState } from 'react';
-import { mockProjects, mockSteps, mockTasks, mockDocuments, mockBatches, mockAuditLog, mockApprovals } from '@/data/mockData';
+import { useState, useCallback } from 'react';
+import { mockProjects, mockSteps, mockTasks as initialMockTasks, mockDocuments, mockBatches, mockAuditLog } from '@/data/mockData';
 import { StatusBadge } from '@/components/StatusBadge';
 import { StepTimeline } from '@/components/StepTimeline';
 import { TaskCard } from '@/components/TaskCard';
-import { ArrowLeft, Calendar, MapPin, User, FileText, Package, History, LayoutGrid, Link2, Eye, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
-import type { GlobalStatus, Step } from '@/types/project';
+import { TaskDetailPanel } from '@/components/TaskDetailPanel';
+import { ArrowLeft, Calendar, MapPin, User, FileText, Package, History, LayoutGrid, CheckCircle2 } from 'lucide-react';
+import type { GlobalStatus, Task } from '@/types/project';
+import { toast } from 'sonner';
 
 const tabs = [
-  { id: 'overview', label: 'Vue d\'ensemble', icon: LayoutGrid },
+  { id: 'overview', label: "Vue d'ensemble", icon: LayoutGrid },
   { id: 'steps', label: 'Étapes', icon: CheckCircle2 },
   { id: 'tasks', label: 'Tâches', icon: LayoutGrid },
   { id: 'documents', label: 'Documents', icon: FileText },
@@ -16,7 +18,7 @@ const tabs = [
   { id: 'audit', label: 'Journal', icon: History },
 ] as const;
 
-type TabId = typeof tabs[number]['id'];
+type TabId = (typeof tabs)[number]['id'];
 
 const taskStatusColumns: { status: GlobalStatus; label: string }[] = [
   { status: 'Draft', label: 'Brouillon' },
@@ -30,6 +32,8 @@ export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [stepFilter, setStepFilter] = useState<string>('all');
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<Task[]>(initialMockTasks);
 
   const project = mockProjects.find((p) => p.id === id);
   if (!project) {
@@ -42,17 +46,38 @@ export default function ProjectDetailPage() {
   }
 
   const steps = mockSteps.filter((s) => s.project_id === id);
-  const tasks = mockTasks.filter((t) => t.project_id === id);
+  const projectTasks = tasks.filter((t) => t.project_id === id);
   const documents = mockDocuments.filter((d) => d.project_id === id);
   const batches = mockBatches.filter((b) => b.project_id === id);
   const auditLog = mockAuditLog.filter((a) => a.project_id === id);
 
   const doneSteps = steps.filter((s) => s.statut === 'Done' || s.statut === 'Approved').length;
-  const doneTasks = tasks.filter((t) => t.statut === 'Done' || t.statut === 'Approved').length;
-  const blockedTasks = tasks.filter((t) => t.statut === 'Blocked').length;
+  const doneTasks = projectTasks.filter((t) => t.statut === 'Done' || t.statut === 'Approved').length;
+  const blockedTasks = projectTasks.filter((t) => t.statut === 'Blocked').length;
   const progress = steps.length ? Math.round((doneSteps / steps.length) * 100) : 0;
 
-  const filteredTasks = stepFilter === 'all' ? tasks : tasks.filter((t) => t.step_id === stepFilter);
+  const filteredTasks = stepFilter === 'all' ? projectTasks : projectTasks.filter((t) => t.step_id === stepFilter);
+  const selectedTask = selectedTaskId ? projectTasks.find((t) => t.id === selectedTaskId) : undefined;
+
+  const handleStatusChange = (taskId: string, newStatus: GlobalStatus) => {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? { ...t, statut: newStatus, updated_at: new Date().toISOString().split('T')[0], blocking_reason: newStatus !== 'Blocked' ? undefined : t.blocking_reason }
+          : t
+      )
+    );
+    toast.success(`Statut mis à jour → ${newStatus}`);
+  };
+
+  const handleAssigneeChange = (taskId: string, assigneeId: string | undefined) => {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId ? { ...t, assignee: assigneeId, updated_at: new Date().toISOString().split('T')[0] } : t
+      )
+    );
+    toast.success(assigneeId ? 'Tâche affectée' : 'Affectation retirée');
+  };
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
@@ -72,7 +97,6 @@ export default function ProjectDetailPage() {
             <p className="text-muted-foreground mt-1 max-w-2xl">{project.description}</p>
           </div>
         </div>
-
         <div className="flex flex-wrap gap-4 mt-4 text-sm text-muted-foreground">
           <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{project.site}</span>
           <span className="flex items-center gap-1.5"><User className="h-3.5 w-3.5" />{project.owner_role}</span>
@@ -89,9 +113,7 @@ export default function ProjectDetailPage() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'border-accent text-accent'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
+                activeTab === tab.id ? 'border-accent text-accent' : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
               <tab.icon className="h-4 w-4" />
@@ -101,10 +123,9 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      {/* Tab Content */}
+      {/* Overview Tab */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          {/* Stats row */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="glass-card rounded-xl p-4">
               <p className="text-xs text-muted-foreground">Progression</p>
@@ -120,7 +141,7 @@ export default function ProjectDetailPage() {
             </div>
             <div className="glass-card rounded-xl p-4">
               <p className="text-xs text-muted-foreground">Tâches terminées</p>
-              <p className="text-2xl font-bold mt-1">{doneTasks}/{tasks.length}</p>
+              <p className="text-2xl font-bold mt-1">{doneTasks}/{projectTasks.length}</p>
             </div>
             <div className="glass-card rounded-xl p-4">
               <p className="text-xs text-muted-foreground">Bloquées</p>
@@ -128,14 +149,10 @@ export default function ProjectDetailPage() {
               {blockedTasks > 0 && <p className="text-xs text-blocked mt-1">Attention requise</p>}
             </div>
           </div>
-
-          {/* Step Timeline */}
           <div className="glass-card rounded-xl p-6">
             <h3 className="font-semibold mb-6">Pipeline de validation</h3>
             <StepTimeline steps={steps} />
           </div>
-
-          {/* Recent activity */}
           <div className="glass-card rounded-xl p-6">
             <h3 className="font-semibold mb-4">Activité récente</h3>
             <div className="space-y-3">
@@ -156,6 +173,7 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
+      {/* Steps Tab */}
       {activeTab === 'steps' && (
         <div className="space-y-6">
           <div className="glass-card rounded-xl p-6">
@@ -163,15 +181,13 @@ export default function ProjectDetailPage() {
           </div>
           <div className="grid gap-4">
             {steps.map((step) => {
-              const stepTasks = tasks.filter((t) => t.step_id === step.id);
+              const stepTasks = projectTasks.filter((t) => t.step_id === step.id);
               const stepDone = stepTasks.filter((t) => t.statut === 'Done' || t.statut === 'Approved').length;
               return (
                 <div key={step.id} className="glass-card rounded-xl p-5">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
-                      <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-semibold">
-                        {step.order}
-                      </span>
+                      <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-semibold">{step.order}</span>
                       <div>
                         <h4 className="font-medium">{step.name}</h4>
                         {step.start_date && (
@@ -202,9 +218,9 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
+      {/* Tasks Tab */}
       {activeTab === 'tasks' && (
         <div className="space-y-4">
-          {/* Step filter */}
           <div className="flex gap-1.5 overflow-x-auto pb-1">
             <button
               onClick={() => setStepFilter('all')}
@@ -227,11 +243,10 @@ export default function ProjectDetailPage() {
             ))}
           </div>
 
-          {/* Kanban */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
             {taskStatusColumns.map((col) => {
               const colTasks = filteredTasks.filter((t) =>
-                col.status === 'Done' ? (t.statut === 'Done' || t.statut === 'Approved') : t.statut === col.status
+                col.status === 'Done' ? t.statut === 'Done' || t.statut === 'Approved' : t.statut === col.status
               );
               return (
                 <div key={col.status} className="space-y-3">
@@ -241,7 +256,7 @@ export default function ProjectDetailPage() {
                   </div>
                   <div className="space-y-2">
                     {colTasks.map((task) => (
-                      <TaskCard key={task.id} task={task} />
+                      <TaskCard key={task.id} task={task} onClick={() => setSelectedTaskId(task.id)} />
                     ))}
                     {colTasks.length === 0 && (
                       <div className="py-8 text-center text-xs text-muted-foreground border border-dashed border-border rounded-lg">
@@ -256,43 +271,41 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
+      {/* Documents Tab */}
       {activeTab === 'documents' && (
-        <div className="space-y-4">
-          <div className="glass-card rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Fichier</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Type</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Version</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Statut</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Date</th>
+        <div className="glass-card rounded-xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/50">
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Fichier</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Type</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Version</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Statut</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {documents.map((doc) => (
+                <tr key={doc.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">{doc.filename}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{doc.type.replace(/_/g, ' ')}</td>
+                  <td className="px-4 py-3 mono text-xs">{doc.version}</td>
+                  <td className="px-4 py-3"><StatusBadge status={doc.statut} /></td>
+                  <td className="px-4 py-3 text-muted-foreground">{new Date(doc.uploaded_at).toLocaleDateString('fr-FR')}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {documents.map((doc) => (
-                  <tr key={doc.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{doc.filename}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{doc.type.replace(/_/g, ' ')}</td>
-                    <td className="px-4 py-3 mono text-xs">{doc.version}</td>
-                    <td className="px-4 py-3"><StatusBadge status={doc.statut} /></td>
-                    <td className="px-4 py-3 text-muted-foreground">{new Date(doc.uploaded_at).toLocaleDateString('fr-FR')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {documents.length === 0 && (
-              <div className="py-12 text-center text-sm text-muted-foreground">Aucun document</div>
-            )}
-          </div>
+              ))}
+            </tbody>
+          </table>
+          {documents.length === 0 && <div className="py-12 text-center text-sm text-muted-foreground">Aucun document</div>}
         </div>
       )}
 
+      {/* Batches Tab */}
       {activeTab === 'batches' && (
         <div className="space-y-6">
           <h3 className="font-semibold">Lots de validation</h3>
@@ -307,12 +320,11 @@ export default function ProjectDetailPage() {
               </div>
             ))}
           </div>
-          {batches.length === 0 && (
-            <div className="py-12 text-center text-sm text-muted-foreground glass-card rounded-xl">Aucun lot configuré</div>
-          )}
+          {batches.length === 0 && <div className="py-12 text-center text-sm text-muted-foreground glass-card rounded-xl">Aucun lot configuré</div>}
         </div>
       )}
 
+      {/* Audit Tab */}
       {activeTab === 'audit' && (
         <div className="glass-card rounded-xl p-6">
           <div className="space-y-4">
@@ -333,6 +345,18 @@ export default function ProjectDetailPage() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Task Detail Panel */}
+      {selectedTask && (
+        <TaskDetailPanel
+          task={selectedTask}
+          allTasks={projectTasks}
+          onClose={() => setSelectedTaskId(null)}
+          onStatusChange={handleStatusChange}
+          onAssigneeChange={handleAssigneeChange}
+          onTaskClick={(taskId) => setSelectedTaskId(taskId)}
+        />
       )}
     </div>
   );
