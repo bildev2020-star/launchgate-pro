@@ -1,8 +1,9 @@
-import { Link } from 'react-router-dom';
-import { mockProjects, mockSteps } from '@/data/mockData';
-import { StatusBadge } from '@/components/StatusBadge';
-import { Plus, Search, Filter } from 'lucide-react';
 import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useProjects } from '@/contexts/ProjectsContext';
+import { StatusBadge } from '@/components/StatusBadge';
+import { ProjectFormDialog } from '@/components/ProjectFormDialog';
+import { Plus, Search } from 'lucide-react';
 import type { ProjectStatus } from '@/types/project';
 
 const statusFilters: { label: string; value: ProjectStatus | 'all' }[] = [
@@ -16,10 +17,13 @@ const statusFilters: { label: string; value: ProjectStatus | 'all' }[] = [
 ];
 
 export default function ProjectsPage() {
+  const { projects, steps } = useProjects();
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<ProjectStatus | 'all'>('all');
   const [search, setSearch] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
 
-  const filtered = mockProjects.filter((p) => {
+  const filtered = projects.filter((p) => {
     if (filter !== 'all' && p.statut !== filter) return false;
     if (search && !p.produit_nom.toLowerCase().includes(search.toLowerCase()) && !p.code_projet.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -32,7 +36,10 @@ export default function ProjectsPage() {
           <h1 className="text-2xl font-bold tracking-tight">Projets</h1>
           <p className="text-muted-foreground mt-1">Gérez vos projets de validation produit</p>
         </div>
-        <button className="flex items-center gap-2 bg-accent text-accent-foreground px-4 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+        <button
+          onClick={() => setCreateOpen(true)}
+          className="flex items-center gap-2 bg-accent text-accent-foreground px-4 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+        >
           <Plus className="h-4 w-4" />
           Nouveau projet
         </button>
@@ -70,9 +77,9 @@ export default function ProjectsPage() {
       {/* List */}
       <div className="grid gap-4">
         {filtered.map((project) => {
-          const steps = mockSteps.filter((s) => s.project_id === project.id);
-          const doneSteps = steps.filter((s) => s.statut === 'Done' || s.statut === 'Approved').length;
-          const totalSteps = steps.length || 8;
+          const projectSteps = steps.filter((s) => s.project_id === project.id);
+          const doneSteps = projectSteps.filter((s) => s.statut === 'Done' || s.statut === 'Approved').length;
+          const totalSteps = projectSteps.length || 1;
           const progress = Math.round((doneSteps / totalSteps) * 100);
 
           return (
@@ -93,17 +100,21 @@ export default function ProjectsPage() {
                 </div>
                 <div className="text-right shrink-0 space-y-1">
                   <p className="text-xs text-muted-foreground">{project.site}</p>
-                  <p className="text-xs text-muted-foreground">
-                    AMM: {new Date(project.target_AMM_submission_date).toLocaleDateString('fr-FR')}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    DE: {new Date(project.target_DE_date).toLocaleDateString('fr-FR')}
-                  </p>
+                  {project.target_AMM_submission_date && (
+                    <p className="text-xs text-muted-foreground">
+                      AMM: {new Date(project.target_AMM_submission_date).toLocaleDateString('fr-FR')}
+                    </p>
+                  )}
+                  {project.target_DE_date && (
+                    <p className="text-xs text-muted-foreground">
+                      DE: {new Date(project.target_DE_date).toLocaleDateString('fr-FR')}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="mt-4">
                 <div className="flex items-center justify-between text-xs mb-1.5">
-                  <span className="text-muted-foreground">Étapes {doneSteps}/{totalSteps}</span>
+                  <span className="text-muted-foreground">Étapes {doneSteps}/{projectSteps.length}</span>
                   <span className="font-medium">{progress}%</span>
                 </div>
                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
@@ -119,6 +130,12 @@ export default function ProjectsPage() {
           </div>
         )}
       </div>
+
+      <ProjectFormDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={(id) => navigate(`/projects/${id}`)}
+      />
     </div>
   );
 }

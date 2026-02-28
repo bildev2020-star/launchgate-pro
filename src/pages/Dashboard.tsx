@@ -1,49 +1,48 @@
 import { Link } from 'react-router-dom';
-import { mockProjects, mockSteps, mockTasks } from '@/data/mockData';
+import { useProjects } from '@/contexts/ProjectsContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import {
   FolderKanban,
-  TrendingUp,
   AlertTriangle,
   CheckCircle2,
-  Clock,
   ArrowRight,
-  FlaskConical,
   ListTodo,
 } from 'lucide-react';
 
-const stats = [
-  {
-    label: 'Projets actifs',
-    value: mockProjects.filter((p) => p.statut === 'Running' || p.statut === 'Initiated').length,
-    icon: FolderKanban,
-    color: 'text-in-progress',
-    bg: 'bg-in-progress/10',
-  },
-  {
-    label: 'Tâches en cours',
-    value: mockTasks.filter((t) => t.statut === 'InProgress').length,
-    icon: ListTodo,
-    color: 'text-accent',
-    bg: 'bg-accent/10',
-  },
-  {
-    label: 'Tâches bloquées',
-    value: mockTasks.filter((t) => t.statut === 'Blocked').length,
-    icon: AlertTriangle,
-    color: 'text-blocked',
-    bg: 'bg-blocked/10',
-  },
-  {
-    label: 'Tâches terminées',
-    value: mockTasks.filter((t) => t.statut === 'Done' || t.statut === 'Approved').length,
-    icon: CheckCircle2,
-    color: 'text-success',
-    bg: 'bg-success/10',
-  },
-];
-
 export default function Dashboard() {
+  const { projects, steps: allSteps, tasks } = useProjects();
+
+  const stats = [
+    {
+      label: 'Projets actifs',
+      value: projects.filter((p) => p.statut === 'Running' || p.statut === 'Initiated').length,
+      icon: FolderKanban,
+      color: 'text-in-progress',
+      bg: 'bg-in-progress/10',
+    },
+    {
+      label: 'Tâches en cours',
+      value: tasks.filter((t) => t.statut === 'InProgress').length,
+      icon: ListTodo,
+      color: 'text-accent',
+      bg: 'bg-accent/10',
+    },
+    {
+      label: 'Tâches bloquées',
+      value: tasks.filter((t) => t.statut === 'Blocked').length,
+      icon: AlertTriangle,
+      color: 'text-blocked',
+      bg: 'bg-blocked/10',
+    },
+    {
+      label: 'Tâches terminées',
+      value: tasks.filter((t) => t.statut === 'Done' || t.statut === 'Approved').length,
+      icon: CheckCircle2,
+      color: 'text-success',
+      bg: 'bg-success/10',
+    },
+  ];
+
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8">
       {/* Header */}
@@ -79,10 +78,10 @@ export default function Dashboard() {
           </Link>
         </div>
         <div className="grid gap-4">
-          {mockProjects.map((project) => {
-            const steps = mockSteps.filter((s) => s.project_id === project.id);
+          {projects.map((project) => {
+            const steps = allSteps.filter((s) => s.project_id === project.id);
             const doneSteps = steps.filter((s) => s.statut === 'Done' || s.statut === 'Approved').length;
-            const totalSteps = steps.length || 8;
+            const totalSteps = steps.length || 1;
             const progress = Math.round((doneSteps / totalSteps) * 100);
 
             return (

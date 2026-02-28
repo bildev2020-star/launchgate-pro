@@ -1,12 +1,15 @@
 import { useParams, Link } from 'react-router-dom';
-import { useState, useCallback } from 'react';
-import { mockProjects, mockSteps, mockTasks as initialMockTasks, mockDocuments, mockBatches, mockAuditLog } from '@/data/mockData';
+import { useState } from 'react';
+import { useProjects } from '@/contexts/ProjectsContext';
+import { mockDocuments, mockBatches, mockAuditLog } from '@/data/mockData';
 import { StatusBadge } from '@/components/StatusBadge';
 import { StepTimeline } from '@/components/StepTimeline';
 import { TaskCard } from '@/components/TaskCard';
 import { TaskDetailPanel } from '@/components/TaskDetailPanel';
-import { ArrowLeft, Calendar, MapPin, User, FileText, Package, History, LayoutGrid, CheckCircle2 } from 'lucide-react';
-import type { GlobalStatus, Task } from '@/types/project';
+import { ProjectFormDialog } from '@/components/ProjectFormDialog';
+import { ArrowLeft, Calendar, MapPin, User, FileText, Package, History, LayoutGrid, CheckCircle2, Pencil } from 'lucide-react';
+import type { GlobalStatus } from '@/types/project';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
 const tabs = [
@@ -30,12 +33,13 @@ const taskStatusColumns: { status: GlobalStatus; label: string }[] = [
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { projects, steps: allSteps, tasks: allTasks, setTasks } = useProjects();
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [stepFilter, setStepFilter] = useState<string>('all');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [tasks, setTasks] = useState<Task[]>(initialMockTasks);
+  const [editOpen, setEditOpen] = useState(false);
 
-  const project = mockProjects.find((p) => p.id === id);
+  const project = projects.find((p) => p.id === id);
   if (!project) {
     return (
       <div className="p-8 text-center">
@@ -45,8 +49,8 @@ export default function ProjectDetailPage() {
     );
   }
 
-  const steps = mockSteps.filter((s) => s.project_id === id);
-  const projectTasks = tasks.filter((t) => t.project_id === id);
+  const steps = allSteps.filter((s) => s.project_id === id);
+  const projectTasks = allTasks.filter((t) => t.project_id === id);
   const documents = mockDocuments.filter((d) => d.project_id === id);
   const batches = mockBatches.filter((b) => b.project_id === id);
   const auditLog = mockAuditLog.filter((a) => a.project_id === id);
@@ -96,12 +100,15 @@ export default function ProjectDetailPage() {
             <h1 className="text-2xl font-bold">{project.produit_nom}</h1>
             <p className="text-muted-foreground mt-1 max-w-2xl">{project.description}</p>
           </div>
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+            <Pencil className="h-3.5 w-3.5 mr-1" /> Modifier
+          </Button>
         </div>
         <div className="flex flex-wrap gap-4 mt-4 text-sm text-muted-foreground">
           <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{project.site}</span>
           <span className="flex items-center gap-1.5"><User className="h-3.5 w-3.5" />{project.owner_role}</span>
-          <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />AMM: {new Date(project.target_AMM_submission_date).toLocaleDateString('fr-FR')}</span>
-          <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />DE: {new Date(project.target_DE_date).toLocaleDateString('fr-FR')}</span>
+          {project.target_AMM_submission_date && <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />AMM: {new Date(project.target_AMM_submission_date).toLocaleDateString('fr-FR')}</span>}
+          {project.target_DE_date && <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />DE: {new Date(project.target_DE_date).toLocaleDateString('fr-FR')}</span>}
         </div>
       </div>
 
@@ -358,6 +365,13 @@ export default function ProjectDetailPage() {
           onTaskClick={(taskId) => setSelectedTaskId(taskId)}
         />
       )}
+
+      {/* Edit Project Dialog */}
+      <ProjectFormDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        project={project}
+      />
     </div>
   );
 }
