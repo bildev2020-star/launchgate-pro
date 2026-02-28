@@ -3,13 +3,14 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   FolderKanban,
-  ClipboardCheck,
+  Settings2,
   FlaskConical,
 } from 'lucide-react';
 
 const navItems = [
   { to: '/', label: 'Tableau de bord', icon: LayoutDashboard },
   { to: '/projects', label: 'Projets', icon: FolderKanban },
+  { to: '/settings/pipeline', label: 'Paramétrage Pipeline', icon: Settings2 },
 ];
 
 export function AppLayout({ children }: { children: ReactNode }) {
