@@ -1,10 +1,18 @@
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, ReactNode, useCallback, useMemo } from 'react';
 import type { PipelineTemplate, StepTemplate, TaskTemplate, GateCondition } from '@/types/pipelineTemplate';
 import { DEFAULT_PIPELINE_TEMPLATE } from '@/data/defaultPipelineTemplate';
 
 interface PipelineTemplateContextValue {
-  template: PipelineTemplate;
-  // Step operations
+  // Multi-template management
+  templates: PipelineTemplate[];
+  activeTemplateId: string;
+  activeTemplate: PipelineTemplate;
+  setActiveTemplateId: (id: string) => void;
+  createTemplate: (name: string, description: string) => string;
+  duplicateTemplate: (templateId: string) => string;
+  deleteTemplate: (templateId: string) => void;
+  updateTemplateMeta: (templateId: string, updates: Partial<Pick<PipelineTemplate, 'name' | 'description'>>) => void;
+  // Step operations (on active template)
   addStep: (name: string) => void;
   updateStep: (stepId: string, updates: Partial<Pick<StepTemplate, 'name'>>) => void;
   removeStep: (stepId: string) => void;
@@ -20,84 +28,176 @@ interface PipelineTemplateContextValue {
   updateGate: (stepId: string, gate: GateCondition | undefined) => void;
   // Reset
   resetToDefault: () => void;
-  // All task templates flat (for dependency picker)
+  // Computed: all task templates flat (for dependency picker), scoped to active template
   allTasks: { stepId: string; stepName: string; task: TaskTemplate }[];
+  // Alias for backward compat
+  template: PipelineTemplate;
 }
 
 const PipelineTemplateContext = createContext<PipelineTemplateContextValue | null>(null);
 
-function loadTemplate(): PipelineTemplate {
+const STORAGE_KEY = 'pipeline-templates';
+const ACTIVE_KEY = 'pipeline-active-template';
+
+function loadTemplates(): PipelineTemplate[] {
   try {
-    const stored = localStorage.getItem('pipeline-template');
-    if (stored) return JSON.parse(stored);
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
   } catch {}
-  return structuredClone(DEFAULT_PIPELINE_TEMPLATE);
+  // Migrate from old single-template storage
+  try {
+    const old = localStorage.getItem('pipeline-template');
+    if (old) {
+      const parsed = JSON.parse(old);
+      if (parsed && parsed.id) return [parsed];
+    }
+  } catch {}
+  return [structuredClone(DEFAULT_PIPELINE_TEMPLATE)];
 }
 
-function saveTemplate(t: PipelineTemplate) {
-  localStorage.setItem('pipeline-template', JSON.stringify(t));
+function loadActiveId(templates: PipelineTemplate[]): string {
+  try {
+    const stored = localStorage.getItem(ACTIVE_KEY);
+    if (stored && templates.some(t => t.id === stored)) return stored;
+  } catch {}
+  return templates[0].id;
+}
+
+function saveTemplates(t: PipelineTemplate[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(t));
+}
+function saveActiveId(id: string) {
+  localStorage.setItem(ACTIVE_KEY, id);
 }
 
 let nextId = Date.now();
 const genId = (prefix: string) => `${prefix}-${++nextId}`;
 
 export function PipelineTemplateProvider({ children }: { children: ReactNode }) {
-  const [template, setTemplate] = useState<PipelineTemplate>(loadTemplate);
+  const [templates, setTemplates] = useState<PipelineTemplate[]>(loadTemplates);
+  const [activeTemplateId, setActiveTemplateIdState] = useState<string>(() => loadActiveId(templates));
 
-  const persist = useCallback((updater: (prev: PipelineTemplate) => PipelineTemplate) => {
-    setTemplate(prev => {
+  const activeTemplate = useMemo(
+    () => templates.find(t => t.id === activeTemplateId) ?? templates[0],
+    [templates, activeTemplateId],
+  );
+
+  const persistTemplates = useCallback((updater: (prev: PipelineTemplate[]) => PipelineTemplate[]) => {
+    setTemplates(prev => {
       const next = updater(prev);
-      saveTemplate(next);
+      saveTemplates(next);
       return next;
     });
   }, []);
 
+  const persistActive = useCallback((updater: (prev: PipelineTemplate) => PipelineTemplate) => {
+    persistTemplates(all => all.map(t => t.id === activeTemplateId ? updater(t) : t));
+  }, [persistTemplates, activeTemplateId]);
+
+  const setActiveTemplateId = useCallback((id: string) => {
+    setActiveTemplateIdState(id);
+    saveActiveId(id);
+  }, []);
+
+  // --- Multi-template CRUD ---
+  const createTemplate = useCallback((name: string, description: string) => {
+    const id = genId('tpl');
+    const tpl: PipelineTemplate = { id, name, description, steps: [] };
+    persistTemplates(prev => [...prev, tpl]);
+    setActiveTemplateId(id);
+    return id;
+  }, [persistTemplates, setActiveTemplateId]);
+
+  const duplicateTemplate = useCallback((templateId: string) => {
+    const id = genId('tpl');
+    persistTemplates(prev => {
+      const source = prev.find(t => t.id === templateId);
+      if (!source) return prev;
+      const clone = structuredClone(source);
+      clone.id = id;
+      clone.name = `${clone.name} (copie)`;
+      // Regen step/task IDs
+      const taskIdMap: Record<string, string> = {};
+      for (const step of clone.steps) {
+        step.id = genId('st');
+        for (const task of step.tasks) {
+          const oldId = task.id;
+          task.id = genId('tt');
+          taskIdMap[oldId] = task.id;
+        }
+      }
+      // Remap dependencies and gates
+      for (const step of clone.steps) {
+        for (const task of step.tasks) {
+          task.dependency_task_ids = task.dependency_task_ids.map(d => taskIdMap[d] ?? d);
+        }
+        if (step.gate) {
+          step.gate.required_task_ids = step.gate.required_task_ids.map(d => taskIdMap[d] ?? d);
+        }
+      }
+      return [...prev, clone];
+    });
+    setActiveTemplateId(id);
+    return id;
+  }, [persistTemplates, setActiveTemplateId]);
+
+  const deleteTemplate = useCallback((templateId: string) => {
+    persistTemplates(prev => {
+      if (prev.length <= 1) return prev; // Keep at least one
+      const next = prev.filter(t => t.id !== templateId);
+      if (activeTemplateId === templateId) {
+        const newActiveId = next[0].id;
+        setActiveTemplateId(newActiveId);
+      }
+      return next;
+    });
+  }, [persistTemplates, activeTemplateId, setActiveTemplateId]);
+
+  const updateTemplateMeta = useCallback((templateId: string, updates: Partial<Pick<PipelineTemplate, 'name' | 'description'>>) => {
+    persistTemplates(all => all.map(t => t.id === templateId ? { ...t, ...updates } : t));
+  }, [persistTemplates]);
+
+  // --- Step ops (on active) ---
   const addStep = useCallback((name: string) => {
-    persist(t => ({
-      ...t,
-      steps: [...t.steps, { id: genId('st'), name, order: t.steps.length + 1, tasks: [] }],
-    }));
-  }, [persist]);
+    persistActive(t => ({ ...t, steps: [...t.steps, { id: genId('st'), name, order: t.steps.length + 1, tasks: [] }] }));
+  }, [persistActive]);
 
   const updateStep = useCallback((stepId: string, updates: Partial<Pick<StepTemplate, 'name'>>) => {
-    persist(t => ({
-      ...t,
-      steps: t.steps.map(s => s.id === stepId ? { ...s, ...updates } : s),
-    }));
-  }, [persist]);
+    persistActive(t => ({ ...t, steps: t.steps.map(s => s.id === stepId ? { ...s, ...updates } : s) }));
+  }, [persistActive]);
 
   const removeStep = useCallback((stepId: string) => {
-    persist(t => ({
-      ...t,
-      steps: t.steps.filter(s => s.id !== stepId).map((s, i) => ({ ...s, order: i + 1 })),
-    }));
-  }, [persist]);
+    persistActive(t => ({ ...t, steps: t.steps.filter(s => s.id !== stepId).map((s, i) => ({ ...s, order: i + 1 })) }));
+  }, [persistActive]);
 
   const reorderSteps = useCallback((fromIndex: number, toIndex: number) => {
-    persist(t => {
+    persistActive(t => {
       const steps = [...t.steps];
       const [moved] = steps.splice(fromIndex, 1);
       steps.splice(toIndex, 0, moved);
       return { ...t, steps: steps.map((s, i) => ({ ...s, order: i + 1 })) };
     });
-  }, [persist]);
+  }, [persistActive]);
 
   const addTask = useCallback((stepId: string, task: Omit<TaskTemplate, 'id'>) => {
-    persist(t => ({
+    persistActive(t => ({
       ...t,
       steps: t.steps.map(s => s.id === stepId ? { ...s, tasks: [...s.tasks, { ...task, id: genId('tt') }] } : s),
     }));
-  }, [persist]);
+  }, [persistActive]);
 
   const updateTask = useCallback((stepId: string, taskId: string, updates: Partial<TaskTemplate>) => {
-    persist(t => ({
+    persistActive(t => ({
       ...t,
       steps: t.steps.map(s => s.id === stepId ? { ...s, tasks: s.tasks.map(tk => tk.id === taskId ? { ...tk, ...updates } : tk) } : s),
     }));
-  }, [persist]);
+  }, [persistActive]);
 
   const removeTask = useCallback((stepId: string, taskId: string) => {
-    persist(t => ({
+    persistActive(t => ({
       ...t,
       steps: t.steps.map(s => ({
         ...s,
@@ -108,10 +208,10 @@ export function PipelineTemplateProvider({ children }: { children: ReactNode }) 
         gate: s.gate ? { required_task_ids: s.gate.required_task_ids.filter(id => id !== taskId) } : undefined,
       })),
     }));
-  }, [persist]);
+  }, [persistActive]);
 
   const addDependency = useCallback((stepId: string, taskId: string, depId: string) => {
-    persist(t => ({
+    persistActive(t => ({
       ...t,
       steps: t.steps.map(s => s.id === stepId ? {
         ...s,
@@ -120,10 +220,10 @@ export function PipelineTemplateProvider({ children }: { children: ReactNode }) 
           : tk),
       } : s),
     }));
-  }, [persist]);
+  }, [persistActive]);
 
   const removeDependency = useCallback((stepId: string, taskId: string, depId: string) => {
-    persist(t => ({
+    persistActive(t => ({
       ...t,
       steps: t.steps.map(s => s.id === stepId ? {
         ...s,
@@ -132,28 +232,28 @@ export function PipelineTemplateProvider({ children }: { children: ReactNode }) 
           : tk),
       } : s),
     }));
-  }, [persist]);
+  }, [persistActive]);
 
   const updateGate = useCallback((stepId: string, gate: GateCondition | undefined) => {
-    persist(t => ({
-      ...t,
-      steps: t.steps.map(s => s.id === stepId ? { ...s, gate } : s),
-    }));
-  }, [persist]);
+    persistActive(t => ({ ...t, steps: t.steps.map(s => s.id === stepId ? { ...s, gate } : s) }));
+  }, [persistActive]);
 
   const resetToDefault = useCallback(() => {
     const fresh = structuredClone(DEFAULT_PIPELINE_TEMPLATE);
-    saveTemplate(fresh);
-    setTemplate(fresh);
-  }, []);
+    persistTemplates(prev => prev.map(t => t.id === activeTemplateId ? fresh : t));
+  }, [persistTemplates, activeTemplateId]);
 
-  const allTasks = template.steps.flatMap(s =>
-    s.tasks.map(task => ({ stepId: s.id, stepName: s.name, task }))
+  const allTasks = useMemo(
+    () => activeTemplate.steps.flatMap(s => s.tasks.map(task => ({ stepId: s.id, stepName: s.name, task }))),
+    [activeTemplate],
   );
 
   return (
     <PipelineTemplateContext.Provider value={{
-      template, addStep, updateStep, removeStep, reorderSteps,
+      templates, activeTemplateId, activeTemplate, setActiveTemplateId,
+      createTemplate, duplicateTemplate, deleteTemplate, updateTemplateMeta,
+      template: activeTemplate,
+      addStep, updateStep, removeStep, reorderSteps,
       addTask, updateTask, removeTask,
       addDependency, removeDependency, updateGate,
       resetToDefault, allTasks,
