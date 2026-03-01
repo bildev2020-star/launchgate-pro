@@ -33,8 +33,8 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         </div>
       )}
 
-      <div className="flex items-center justify-between mt-3">
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+      <div className="flex items-center justify-between mt-3 gap-2">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground min-w-0 flex-1">
           <span className="flex items-center gap-1">
             <User className="h-3 w-3" />
             {task.owner_role}
