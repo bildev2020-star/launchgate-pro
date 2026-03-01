@@ -17,11 +17,13 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
       onClick={onClick}
       className={`w-full text-left glass-card rounded-lg p-4 border-l-4 ${priorityColor} hover:shadow-md transition-all group animate-slide-in`}
     >
-      <div className="flex items-start justify-between gap-2 mb-2">
+      <div className="flex flex-col gap-2 mb-2">
+        <div className="flex justify-end">
+          <StatusBadge status={task.statut} />
+        </div>
         <h4 className="text-sm font-medium leading-tight group-hover:text-accent transition-colors">
           {task.title}
         </h4>
-        <StatusBadge status={task.statut} />
       </div>
 
       {task.blocking_reason && (
