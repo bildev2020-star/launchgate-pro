@@ -31,9 +31,11 @@ const PRODUCT_TYPES: { value: ProductType; label: string }[] = [
 const ROLES: Role[] = ['Business Developer', 'Marketing', 'AR', 'Supply', 'QC', 'Bureau Méthodes', 'Validation', 'Ordonnancement', 'Production'];
 
 export function ProjectFormDialog({ open, onOpenChange, project, onCreated }: ProjectFormDialogProps) {
-  const { template } = usePipelineTemplate();
+  const { templates, activeTemplateId } = usePipelineTemplate();
+  const [selectedTemplateId, setSelectedTemplateId] = useState(activeTemplateId);
   const { addProject, updateProject, updateProjectFromTemplate } = useProjects();
   const isEdit = !!project;
+  const template = templates.find(t => t.id === selectedTemplateId) ?? templates[0];
 
   const [form, setForm] = useState({
     code_projet: project?.code_projet ?? '',
@@ -176,10 +178,20 @@ export function ProjectFormDialog({ open, onOpenChange, project, onCreated }: Pr
               )}
             </div>
 
-            <div className="text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">{template.name}</p>
-              <p className="text-xs mt-0.5">{template.description}</p>
-            </div>
+            <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {templates.map(t => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name} ({t.steps.length} étapes)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <p className="text-xs text-muted-foreground">{template.description}</p>
 
             <div className="flex flex-wrap gap-2">
               {template.steps.map(step => (

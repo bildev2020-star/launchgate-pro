@@ -15,7 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import {
   Plus, Trash2, GripVertical, ChevronDown, ChevronRight,
-  ArrowRight, Link2, Shield, RotateCcw, Settings2,
+  ArrowRight, Link2, Shield, RotateCcw, Settings2, Copy, FileText,
 } from 'lucide-react';
 
 const ROLES: Role[] = ['Business Developer', 'Marketing', 'AR', 'Supply', 'QC', 'Bureau Méthodes', 'Validation', 'Ordonnancement', 'Production'];
@@ -23,13 +23,16 @@ const PRIORITIES: Priority[] = ['Low', 'Med', 'High'];
 
 export default function PipelineSettingsPage() {
   const ctx = usePipelineTemplate();
-  const { template } = ctx;
+  const { activeTemplate: template, templates } = ctx;
   const [expandedStep, setExpandedStep] = useState<string | null>(template.steps[0]?.id ?? null);
   const [addStepOpen, setAddStepOpen] = useState(false);
   const [newStepName, setNewStepName] = useState('');
   const [addTaskOpen, setAddTaskOpen] = useState<string | null>(null);
   const [editTaskOpen, setEditTaskOpen] = useState<{ stepId: string; task: TaskTemplate } | null>(null);
   const [gateOpen, setGateOpen] = useState<string | null>(null);
+  const [newTemplateOpen, setNewTemplateOpen] = useState(false);
+  const [newTplName, setNewTplName] = useState('');
+  const [newTplDesc, setNewTplDesc] = useState('');
 
   // New task form state
   const [newTask, setNewTask] = useState<Omit<TaskTemplate, 'id'>>({
@@ -64,6 +67,15 @@ export default function PipelineSettingsPage() {
     return found ? `${found.stepName} → ${found.task.title}` : taskId;
   };
 
+  const handleCreateTemplate = () => {
+    if (!newTplName.trim()) return;
+    ctx.createTemplate(newTplName.trim(), newTplDesc.trim());
+    setNewTplName('');
+    setNewTplDesc('');
+    setNewTemplateOpen(false);
+    toast({ title: 'Template créé' });
+  };
+
   return (
     <div className="p-6 lg:p-10 max-w-5xl mx-auto space-y-8">
       {/* Header */}
@@ -74,13 +86,61 @@ export default function PipelineSettingsPage() {
             Paramétrage du Pipeline
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Configurez les étapes, tâches, dépendances et gates du template de validation.
+            Gérez vos templates de pipeline et configurez étapes, tâches, dépendances et gates.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => { ctx.resetToDefault(); toast({ title: 'Template réinitialisé' }); }}>
           <RotateCcw className="h-4 w-4 mr-1" /> Réinitialiser
         </Button>
       </div>
+
+      {/* Template selector */}
+      <Card className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-semibold flex items-center gap-2">
+            <FileText className="h-4 w-4 text-primary" />
+            Template actif
+          </Label>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => { ctx.duplicateTemplate(template.id); toast({ title: 'Template dupliqué' }); }}>
+              <Copy className="h-3.5 w-3.5 mr-1" /> Dupliquer
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setNewTemplateOpen(true)}>
+              <Plus className="h-3.5 w-3.5 mr-1" /> Nouveau
+            </Button>
+            {templates.length > 1 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive"
+                onClick={() => { ctx.deleteTemplate(template.id); toast({ title: 'Template supprimé' }); }}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" /> Supprimer
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Select value={ctx.activeTemplateId} onValueChange={id => ctx.setActiveTemplateId(id)}>
+            <SelectTrigger className="w-72">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {templates.map(t => (
+                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex-1">
+            <TemplateMetaEditor template={template} onUpdate={(u) => ctx.updateTemplateMeta(template.id, u)} />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {template.steps.length} étapes • {template.steps.reduce((a, s) => a + s.tasks.length, 0)} tâches
+        </p>
+      </Card>
+
+      <Separator />
 
       <Separator />
 
@@ -238,6 +298,49 @@ export default function PipelineSettingsPage() {
           {gateOpen && <GateEditor stepId={gateOpen} ctx={ctx} onClose={() => setGateOpen(null)} />}
         </DialogContent>
       </Dialog>
+      {/* New Template Dialog */}
+      <Dialog open={newTemplateOpen} onOpenChange={setNewTemplateOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Nouveau template</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Nom</Label>
+              <Input placeholder="Ex: Pipeline DM" value={newTplName} onChange={e => setNewTplName(e.target.value)} />
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Textarea placeholder="Description du template..." value={newTplDesc} onChange={e => setNewTplDesc(e.target.value)} rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleCreateTemplate} disabled={!newTplName.trim()}>Créer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ---------- Template name/desc inline editor ----------
+
+function TemplateMetaEditor({ template, onUpdate }: { template: { name: string; description: string }; onUpdate: (u: { name?: string; description?: string }) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(template.name);
+  const [desc, setDesc] = useState(template.description);
+
+  if (!editing) {
+    return (
+      <div className="cursor-pointer" onDoubleClick={() => { setName(template.name); setDesc(template.description); setEditing(true); }}>
+        <p className="text-sm text-muted-foreground truncate">{template.description || 'Double-cliquez pour modifier'}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-2 items-center" onClick={e => e.stopPropagation()}>
+      <Input className="h-7 text-sm w-48" value={name} onChange={e => setName(e.target.value)} placeholder="Nom" />
+      <Input className="h-7 text-sm flex-1" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Description" />
+      <Button size="sm" className="h-7" onClick={() => { onUpdate({ name, description: desc }); setEditing(false); }}>OK</Button>
     </div>
   );
 }
