@@ -33,7 +33,7 @@ const taskStatusColumns: { status: GlobalStatus; label: string }[] = [
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { projects, steps: allSteps, tasks: allTasks, setTasks } = useProjects();
+  const { projects, tasks: allTasks, setTasks, computedSteps } = useProjects();
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [stepFilter, setStepFilter] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -49,7 +49,7 @@ export default function ProjectDetailPage() {
     );
   }
 
-  const steps = allSteps.filter((s) => s.project_id === id);
+  const steps = computedSteps(id!);
   const projectTasks = allTasks.filter((t) => t.project_id === id);
   const documents = mockDocuments.filter((d) => d.project_id === id);
   const batches = mockBatches.filter((b) => b.project_id === id);
