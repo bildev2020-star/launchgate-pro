@@ -7,6 +7,8 @@ interface ProjectsContextValue {
   projects: Project[];
   steps: Step[];
   tasks: Task[];
+  /** Steps with statut auto-computed from their tasks */
+  computedSteps: (projectId: string) => Step[];
   addProject: (project: Omit<Project, 'id' | 'created_at' | 'created_by'>, template: PipelineTemplate) => string;
   updateProject: (id: string, updates: Partial<Project>) => void;
   updateProjectFromTemplate: (projectId: string, template: PipelineTemplate) => void;
@@ -89,6 +91,34 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
   }, []);
 
+  const computedSteps = useCallback((projectId: string): Step[] => {
+    const projectSteps = steps.filter(s => s.project_id === projectId).sort((a, b) => a.order - b.order);
+    return projectSteps.map((step, i) => {
+      const stepTasks = tasks.filter(t => t.step_id === step.id);
+      if (stepTasks.length === 0) return step;
+      const allDone = stepTasks.every(t => t.statut === 'Done' || t.statut === 'Approved');
+      const anyInProgress = stepTasks.some(t => t.statut === 'InProgress' || t.statut === 'InReview' || t.statut === 'Rework');
+      const anyBlocked = stepTasks.some(t => t.statut === 'Blocked');
+      // Check if previous step is done
+      const prevStep = i > 0 ? projectSteps[i - 1] : null;
+      const prevDone = !prevStep || tasks.filter(t => t.step_id === prevStep.id).every(t => t.statut === 'Done' || t.statut === 'Approved');
+
+      let statut: Step['statut'] = step.statut;
+      if (allDone) {
+        statut = 'Done';
+      } else if (anyBlocked) {
+        statut = 'Blocked';
+      } else if (anyInProgress) {
+        statut = 'InProgress';
+      } else if (prevDone && stepTasks.some(t => t.statut === 'Draft' || t.statut === 'Ready')) {
+        statut = 'Ready';
+      } else {
+        statut = 'Draft';
+      }
+      return { ...step, statut };
+    });
+  }, [steps, tasks]);
+
   const updateProjectFromTemplate = useCallback((projectId: string, template: PipelineTemplate) => {
     // Remove old steps and tasks for this project, regenerate from template
     setSteps(prev => prev.filter(s => s.project_id !== projectId));
@@ -99,7 +129,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <ProjectsContext.Provider value={{ projects, steps, tasks, addProject, updateProject, updateProjectFromTemplate, setTasks }}>
+    <ProjectsContext.Provider value={{ projects, steps, tasks, computedSteps, addProject, updateProject, updateProjectFromTemplate, setTasks }}>
       {children}
     </ProjectsContext.Provider>
   );
