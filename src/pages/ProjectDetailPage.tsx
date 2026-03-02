@@ -7,7 +7,7 @@ import { StepTimeline } from '@/components/StepTimeline';
 import { TaskCard } from '@/components/TaskCard';
 import { TaskDetailPanel } from '@/components/TaskDetailPanel';
 import { ProjectFormDialog } from '@/components/ProjectFormDialog';
-import { ArrowLeft, Calendar, MapPin, User, FileText, Package, History, LayoutGrid, CheckCircle2, Pencil } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, User, FileText, Package, History, LayoutGrid, CheckCircle2, Pencil, ChevronLeft, ChevronRight, Lock } from 'lucide-react';
 import type { GlobalStatus } from '@/types/project';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -35,7 +35,7 @@ export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { projects, steps: allSteps, tasks: allTasks, setTasks } = useProjects();
   const [activeTab, setActiveTab] = useState<TabId>('overview');
-  const [stepFilter, setStepFilter] = useState<string>('all');
+  const [stepFilter, setStepFilter] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
 
@@ -60,7 +60,16 @@ export default function ProjectDetailPage() {
   const blockedTasks = projectTasks.filter((t) => t.statut === 'Blocked').length;
   const progress = steps.length ? Math.round((doneSteps / steps.length) * 100) : 0;
 
-  const filteredTasks = stepFilter === 'all' ? projectTasks : projectTasks.filter((t) => t.step_id === stepFilter);
+  // Default to first step
+  const activeStepId = stepFilter ?? (steps.length > 0 ? steps[0].id : undefined);
+  const activeStepIndex = steps.findIndex((s) => s.id === activeStepId);
+  const activeStep = activeStepIndex >= 0 ? steps[activeStepIndex] : undefined;
+
+  const filteredTasks = activeStepId ? projectTasks.filter((t) => t.step_id === activeStepId) : projectTasks;
+  const currentStepAllDone = filteredTasks.length > 0 && filteredTasks.every((t) => t.statut === 'Done' || t.statut === 'Approved');
+  const canGoNext = currentStepAllDone && activeStepIndex < steps.length - 1;
+  const canGoPrev = activeStepIndex > 0;
+
   const selectedTask = selectedTaskId ? projectTasks.find((t) => t.id === selectedTaskId) : undefined;
 
   const handleStatusChange = (taskId: string, newStatus: GlobalStatus) => {
@@ -228,27 +237,64 @@ export default function ProjectDetailPage() {
       {/* Tasks Tab */}
       {activeTab === 'tasks' && (
         <div className="space-y-4">
-          <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {/* Step selector with prev/next */}
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => setStepFilter('all')}
-              className={`px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                stepFilter === 'all' ? 'bg-primary text-primary-foreground' : 'bg-card border border-border text-muted-foreground hover:text-foreground'
-              }`}
+              onClick={() => canGoPrev && setStepFilter(steps[activeStepIndex - 1].id)}
+              disabled={!canGoPrev}
+              className={`p-2 rounded-lg border border-border transition-colors ${canGoPrev ? 'hover:bg-muted text-foreground' : 'opacity-30 cursor-not-allowed text-muted-foreground'}`}
             >
-              Toutes les étapes
+              <ChevronLeft className="h-4 w-4" />
             </button>
-            {steps.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setStepFilter(s.id)}
-                className={`px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                  stepFilter === s.id ? 'bg-primary text-primary-foreground' : 'bg-card border border-border text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {s.order}. {s.name.length > 20 ? s.name.substring(0, 20) + '…' : s.name}
-              </button>
-            ))}
+
+            <div className="flex gap-1.5 overflow-x-auto flex-1 pb-1">
+              {steps.map((s, i) => {
+                const sTasks = projectTasks.filter((t) => t.step_id === s.id);
+                const sAllDone = sTasks.length > 0 && sTasks.every((t) => t.statut === 'Done' || t.statut === 'Approved');
+                // A step is accessible if it's the first, or the previous step is fully done
+                const prevDone = i === 0 || (() => {
+                  const prevTasks = projectTasks.filter((t) => t.step_id === steps[i - 1].id);
+                  return prevTasks.length > 0 && prevTasks.every((t) => t.statut === 'Done' || t.statut === 'Approved');
+                })();
+                const isActive = s.id === activeStepId;
+                const locked = !prevDone && i > 0;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => !locked && setStepFilter(s.id)}
+                    disabled={locked}
+                    className={`px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                      locked
+                        ? 'opacity-40 cursor-not-allowed bg-muted text-muted-foreground'
+                        : isActive
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {locked && <Lock className="h-3 w-3" />}
+                    {sAllDone && <CheckCircle2 className="h-3 w-3 text-success" />}
+                    {s.order}. {s.name.length > 20 ? s.name.substring(0, 20) + '…' : s.name}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => canGoNext && setStepFilter(steps[activeStepIndex + 1].id)}
+              disabled={!canGoNext}
+              className={`p-2 rounded-lg border border-border transition-colors ${canGoNext ? 'hover:bg-muted text-foreground' : 'opacity-30 cursor-not-allowed text-muted-foreground'}`}
+              title={!currentStepAllDone ? 'Toutes les tâches doivent être terminées' : ''}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
           </div>
+
+          {!currentStepAllDone && activeStep && (
+            <div className="text-xs text-muted-foreground bg-muted/50 border border-border rounded-lg px-3 py-2 flex items-center gap-2">
+              <Lock className="h-3.5 w-3.5" />
+              Terminez toutes les tâches de l'étape « {activeStep.name} » pour débloquer l'étape suivante.
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
             {taskStatusColumns.map((col) => {
