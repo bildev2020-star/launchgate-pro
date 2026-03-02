@@ -32,6 +32,8 @@ export function TaskDetailPanel({ task, allTasks, onClose, onStatusChange, onAss
   const assignee = task.assignee ? getMemberById(task.assignee) : undefined;
   const suggestedMembers = getMembersByRole(task.owner_role);
   const depTasks = task.dependency_task_ids.map((id) => allTasks.find((t) => t.id === id)).filter(Boolean) as Task[];
+  const unmetDeps = depTasks.filter((d) => d.statut !== 'Approved' && d.statut !== 'Done');
+  const depsBlocked = unmetDeps.length > 0;
   const blockedByThis = allTasks.filter((t) => t.dependency_task_ids.includes(task.id));
 
   return (
@@ -62,12 +64,28 @@ export function TaskDetailPanel({ task, allTasks, onClose, onStatusChange, onAss
           {/* Status Transitions */}
           <div>
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Transition de statut</h4>
+            {depsBlocked && (
+              <div className="p-3 rounded-lg bg-warning/10 border border-warning/20 mb-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-warning mb-1">
+                  <AlertTriangle className="h-4 w-4" />
+                  Dépendances non satisfaites
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {unmetDeps.length === 1
+                    ? `La tâche "${unmetDeps[0].title}" doit être approuvée ou terminée.`
+                    : `${unmetDeps.length} tâches doivent être approuvées ou terminées avant de pouvoir modifier cette tâche.`}
+                </p>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               {transitions.map((t) => (
                 <button
                   key={t.to}
+                  disabled={depsBlocked}
                   onClick={() => onStatusChange(task.id, t.to)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${transitionButtonStyles[t.variant]}`}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                    depsBlocked ? 'opacity-50 cursor-not-allowed bg-muted text-muted-foreground' : transitionButtonStyles[t.variant]
+                  }`}
                 >
                   <ArrowRight className="h-3.5 w-3.5" />
                   {t.label}
