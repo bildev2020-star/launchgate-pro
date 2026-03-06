@@ -16,6 +16,7 @@ import { toast } from '@/hooks/use-toast';
 import {
   Plus, Trash2, GripVertical, ChevronDown, ChevronRight,
   ArrowRight, Link2, Shield, RotateCcw, Settings2, Copy, FileText,
+  Search, X, ChevronUp,
 } from 'lucide-react';
 
 const ROLES: Role[] = ['Business Developer', 'Marketing', 'AR', 'Supply', 'QC', 'Bureau Méthodes', 'Validation', 'Ordonnancement', 'Production'];
