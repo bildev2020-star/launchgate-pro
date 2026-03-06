@@ -456,6 +456,138 @@ function TaskForm({
   );
 }
 
+// ---------- Dependency Picker ----------
+
+function DependencyPicker({
+  selectedIds,
+  allTasks,
+  onChange,
+}: {
+  selectedIds: string[];
+  allTasks: { stepId: string; stepName: string; task: TaskTemplate }[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  const grouped = allTasks.reduce<Record<string, { stepName: string; tasks: TaskTemplate[] }>>((acc, { stepId, stepName, task }) => {
+    if (!acc[stepId]) acc[stepId] = { stepName, tasks: [] };
+    acc[stepId].tasks.push(task);
+    return acc;
+  }, {});
+
+  const stepEntries = Object.entries(grouped);
+  const searchLower = search.toLowerCase();
+
+  const toggle = (id: string) => {
+    onChange(
+      selectedIds.includes(id)
+        ? selectedIds.filter(d => d !== id)
+        : [...selectedIds, id],
+    );
+  };
+
+  const selectedTasks = allTasks.filter(t => selectedIds.includes(t.task.id));
+
+  return (
+    <div className="space-y-2">
+      <Label className="flex items-center gap-1.5">
+        <Link2 className="h-3.5 w-3.5 text-primary" />
+        Dépendances
+        {selectedIds.length > 0 && (
+          <Badge variant="secondary" className="text-xs ml-1">{selectedIds.length}</Badge>
+        )}
+      </Label>
+
+      {selectedTasks.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {selectedTasks.map(({ stepName, task: t }) => (
+            <Badge
+              key={t.id}
+              variant="default"
+              className="text-xs gap-1 pl-2 pr-1 py-1 cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => toggle(t.id)}
+            >
+              <span className="opacity-70">{stepName} →</span> {t.title}
+              <X className="h-3 w-3 ml-0.5 shrink-0" />
+            </Badge>
+          ))}
+        </div>
+      )}
+
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+        <Input
+          className="h-8 text-sm pl-8"
+          placeholder="Rechercher une tâche…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+      </div>
+
+      <div className="border rounded-lg max-h-48 overflow-y-auto divide-y">
+        {stepEntries.map(([stepId, { stepName, tasks }]) => {
+          const filtered = tasks.filter(t =>
+            t.title.toLowerCase().includes(searchLower) ||
+            stepName.toLowerCase().includes(searchLower),
+          );
+          if (filtered.length === 0) return null;
+
+          const isCollapsed = collapsed[stepId];
+          const selectedInStep = filtered.filter(t => selectedIds.includes(t.id)).length;
+
+          return (
+            <div key={stepId}>
+              <button
+                type="button"
+                className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 transition-colors"
+                onClick={() => setCollapsed(c => ({ ...c, [stepId]: !isCollapsed }))}
+              >
+                {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                <span className="uppercase tracking-wide">{stepName}</span>
+                <Badge variant="outline" className="text-[10px] ml-auto">
+                  {selectedInStep > 0 ? `${selectedInStep}/` : ''}{filtered.length}
+                </Badge>
+              </button>
+              {!isCollapsed && (
+                <div className="pb-1">
+                  {filtered.map(t => {
+                    const isSelected = selectedIds.includes(t.id);
+                    return (
+                      <label
+                        key={t.id}
+                        className={`flex items-center gap-2.5 px-4 py-1.5 text-sm cursor-pointer transition-colors rounded-sm mx-1 ${
+                          isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
+                        }`}
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggle(t.id)}
+                        />
+                        <span className={isSelected ? 'font-medium' : ''}>{t.title}</span>
+                        <Badge variant="outline" className="text-[10px] ml-auto">{t.owner_role}</Badge>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {stepEntries.every(([, { stepName, tasks }]) =>
+          tasks.filter(t => t.title.toLowerCase().includes(searchLower) || stepName.toLowerCase().includes(searchLower)).length === 0,
+        ) && (
+          <p className="text-xs text-muted-foreground text-center py-4">Aucune tâche trouvée</p>
+        )}
+      </div>
+
+      {selectedIds.length === 0 && (
+        <p className="text-xs text-muted-foreground italic">Aucune dépendance configurée</p>
+      )}
+    </div>
+  );
+}
+
 function GateEditor({ stepId, ctx, onClose }: { stepId: string; ctx: ReturnType<typeof usePipelineTemplate>; onClose: () => void }) {
   const step = ctx.template.steps.find(s => s.id === stepId);
   if (!step) return null;
