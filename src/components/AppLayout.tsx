@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   FolderKanban,
   Settings2,
+  Shield,
   FlaskConical,
 } from 'lucide-react';
 
@@ -11,6 +12,7 @@ const navItems = [
   { to: '/', label: 'Tableau de bord', icon: LayoutDashboard },
   { to: '/projects', label: 'Projets', icon: FolderKanban },
   { to: '/settings/pipeline', label: 'Paramétrage Pipeline', icon: Settings2 },
+  { to: '/settings/roles', label: 'Gestion des Rôles', icon: Shield },
 ];
 
 export function AppLayout({ children }: { children: ReactNode }) {
