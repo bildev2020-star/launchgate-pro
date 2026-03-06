@@ -414,27 +414,11 @@ function TaskForm({
       </div>
 
       {/* Dependencies */}
-      <div>
-        <Label>Dépendances</Label>
-        <div className="space-y-1 mt-1 max-h-40 overflow-y-auto border rounded-md p-2">
-          {allTasks.map(({ stepName, task: t }) => (
-            <label key={t.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5">
-              <Checkbox
-                checked={task.dependency_task_ids.includes(t.id)}
-                onCheckedChange={(checked) => {
-                  const deps = checked
-                    ? [...task.dependency_task_ids, t.id]
-                    : task.dependency_task_ids.filter(d => d !== t.id);
-                  onChange({ ...task, dependency_task_ids: deps });
-                }}
-              />
-              <span className="text-muted-foreground text-xs">{stepName}</span>
-              <ArrowRight className="h-3 w-3 text-muted-foreground" />
-              <span>{t.title}</span>
-            </label>
-          ))}
-        </div>
-      </div>
+      <DependencyPicker
+        selectedIds={task.dependency_task_ids}
+        allTasks={allTasks}
+        onChange={(deps) => onChange({ ...task, dependency_task_ids: deps })}
+      />
 
       {/* Approval */}
       <div className="space-y-2">
