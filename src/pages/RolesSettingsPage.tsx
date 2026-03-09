@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useRoles, type RoleConfig } from '@/contexts/RolesContext';
-import type { TeamMember } from '@/data/teamMembers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -11,72 +10,59 @@ import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-  Plus, Pencil, Trash2, UserPlus, X, Search, Users, Shield, ChevronDown, ChevronUp,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
+  Plus, Pencil, Trash2, Search, Users, Shield, X,
 } from 'lucide-react';
 
 export default function RolesSettingsPage() {
-  const { roles, members, addRole, updateRole, deleteRole, assignMember, unassignMember, getMembersForRole } = useRoles();
+  const { roles, members, addRole, updateRole, deleteRole, assignMember, unassignMember, getRolesForMember } = useRoles();
 
   const [search, setSearch] = useState('');
-  const [editDialog, setEditDialog] = useState<{ open: boolean; role?: RoleConfig }>({ open: false });
-  const [assignDialog, setAssignDialog] = useState<{ open: boolean; roleId?: string }>({ open: false });
+  const [roleDialog, setRoleDialog] = useState<{ open: boolean; role?: RoleConfig }>({ open: false });
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [expandedRole, setExpandedRole] = useState<string | null>(null);
-
-  // Form state
   const [formName, setFormName] = useState('');
   const [formDesc, setFormDesc] = useState('');
-  const [memberSearch, setMemberSearch] = useState('');
 
-  const filteredRoles = roles.filter(r =>
-    r.name.toLowerCase().includes(search.toLowerCase()) ||
-    r.description.toLowerCase().includes(search.toLowerCase())
+  const filteredMembers = members.filter(m =>
+    m.name.toLowerCase().includes(search.toLowerCase()) ||
+    m.email.toLowerCase().includes(search.toLowerCase())
   );
 
-  const openCreate = () => {
+  const openCreateRole = () => {
     setFormName('');
     setFormDesc('');
-    setEditDialog({ open: true });
+    setRoleDialog({ open: true });
   };
 
-  const openEdit = (role: RoleConfig) => {
+  const openEditRole = (role: RoleConfig) => {
     setFormName(role.name);
     setFormDesc(role.description);
-    setEditDialog({ open: true, role });
+    setRoleDialog({ open: true, role });
   };
 
-  const handleSave = () => {
+  const handleSaveRole = () => {
     if (!formName.trim()) return;
-    if (editDialog.role) {
-      updateRole(editDialog.role.id, { name: formName.trim() as any, description: formDesc.trim() });
+    if (roleDialog.role) {
+      updateRole(roleDialog.role.id, { name: formName.trim() as any, description: formDesc.trim() });
     } else {
       addRole(formName.trim(), formDesc.trim());
     }
-    setEditDialog({ open: false });
+    setRoleDialog({ open: false });
   };
 
-  const openAssign = (roleId: string) => {
-    setMemberSearch('');
-    setAssignDialog({ open: true, roleId });
-  };
-
-  const getUnassignedMembers = (roleId: string) => {
-    const assigned = getMembersForRole(roleId);
-    const assignedIds = new Set(assigned.map(m => m.id));
-    return members.filter(m =>
-      !assignedIds.has(m.id) &&
-      (m.name.toLowerCase().includes(memberSearch.toLowerCase()) || m.email.toLowerCase().includes(memberSearch.toLowerCase()))
-    );
+  const handleAssignRole = (memberId: string, roleId: string) => {
+    // Remove existing roles for this member, then assign the new one
+    const currentRoles = getRolesForMember(memberId);
+    currentRoles.forEach(r => unassignMember(r.id, memberId));
+    if (roleId !== '__none__') {
+      assignMember(roleId, memberId);
+    }
   };
 
   return (
@@ -89,40 +75,14 @@ export default function RolesSettingsPage() {
             Gestion des Rôles
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Configurez les rôles et assignez les membres de l'équipe
+            Assignez un rôle à chaque membre de l'équipe
           </p>
         </div>
-        <Button onClick={openCreate} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Nouveau rôle
-        </Button>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Rechercher un rôle…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-accent/10">
-              <Shield className="h-5 w-5 text-accent" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground">{roles.length}</p>
-              <p className="text-xs text-muted-foreground">Rôles</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
+      {/* Stats + Role management */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <Card className="flex-1">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10">
               <Users className="h-5 w-5 text-primary" />
@@ -133,144 +93,129 @@ export default function RolesSettingsPage() {
             </div>
           </CardContent>
         </Card>
+        <Card className="flex-1">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-accent/10">
+              <Shield className="h-5 w-5 text-accent" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-foreground">{roles.length}</p>
+              <p className="text-xs text-muted-foreground">Rôles</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Roles list */}
-      <div className="space-y-3">
-        {filteredRoles.map(role => {
-          const roleMembers = getMembersForRole(role.id);
-          const isExpanded = expandedRole === role.id;
+      {/* Roles chips + manage */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-foreground">Rôles disponibles</h2>
+          <Button variant="outline" size="sm" onClick={openCreateRole} className="gap-1.5">
+            <Plus className="h-3.5 w-3.5" />
+            Nouveau rôle
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {roles.map(role => {
+            const count = members.filter(m => getRolesForMember(m.id).some(r => r.id === role.id)).length;
+            return (
+              <div
+                key={role.id}
+                className="group flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-card hover:bg-muted/50 transition-colors"
+              >
+                <div className={`w-2.5 h-2.5 rounded-full ${role.color}`} />
+                <span className="text-sm font-medium text-foreground">{role.name}</span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 min-w-[1.25rem] justify-center">
+                  {count}
+                </Badge>
+                <div className="hidden group-hover:flex items-center gap-0.5 ml-1">
+                  <button
+                    className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => openEditRole(role)}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                  <button
+                    className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                    onClick={() => setDeleteConfirm(role.id)}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Rechercher un membre…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
+      {/* Members list */}
+      <div className="space-y-2">
+        {filteredMembers.map(member => {
+          const memberRoles = getRolesForMember(member.id);
+          const currentRoleId = memberRoles.length > 0 ? memberRoles[0].id : '__none__';
 
           return (
-            <Card key={role.id} className="overflow-hidden">
-              <CardHeader className="p-4 pb-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className={`w-3 h-3 rounded-full ${role.color}`} />
-                    <div className="min-w-0">
-                      <CardTitle className="text-base font-semibold text-foreground">{role.name}</CardTitle>
-                      <p className="text-xs text-muted-foreground truncate">{role.description}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Badge variant="secondary" className="text-xs gap-1">
-                      <Users className="h-3 w-3" />
-                      {roleMembers.length}
-                    </Badge>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openAssign(role.id)}>
-                          <UserPlus className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Assigner un membre</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(role)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Modifier</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeleteConfirm(role.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Supprimer</TooltipContent>
-                    </Tooltip>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => setExpandedRole(isExpanded ? null : role.id)}
-                    >
-                      {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    </Button>
-                  </div>
+            <Card key={member.id} className="overflow-hidden">
+              <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
+                <Avatar className="h-10 w-10 shrink-0">
+                  <AvatarFallback className={`${member.avatar_color} text-white text-sm font-medium`}>
+                    {member.avatar_initials}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">{member.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{member.email}</p>
                 </div>
-              </CardHeader>
-
-              {/* Collapsed: avatar row */}
-              {!isExpanded && roleMembers.length > 0 && (
-                <CardContent className="px-4 pb-3 pt-0">
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {roleMembers.slice(0, 6).map(m => (
-                      <Tooltip key={m.id}>
-                        <TooltipTrigger asChild>
-                          <Avatar className="h-7 w-7 border-2 border-card">
-                            <AvatarFallback className={`${m.avatar_color} text-white text-[10px] font-medium`}>
-                              {m.avatar_initials}
-                            </AvatarFallback>
-                          </Avatar>
-                        </TooltipTrigger>
-                        <TooltipContent>{m.name}</TooltipContent>
-                      </Tooltip>
-                    ))}
-                    {roleMembers.length > 6 && (
-                      <span className="text-xs text-muted-foreground ml-1">+{roleMembers.length - 6}</span>
-                    )}
-                  </div>
-                </CardContent>
-              )}
-
-              {/* Expanded: full member list */}
-              {isExpanded && (
-                <CardContent className="px-4 pb-4 pt-0">
-                  {roleMembers.length === 0 ? (
-                    <p className="text-sm text-muted-foreground italic py-2">Aucun membre assigné</p>
-                  ) : (
-                    <div className="space-y-2 mt-2">
-                      {roleMembers.map(m => (
-                        <div key={m.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-8 w-8">
-                              <AvatarFallback className={`${m.avatar_color} text-white text-xs font-medium`}>
-                                {m.avatar_initials}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="text-sm font-medium text-foreground">{m.name}</p>
-                              <p className="text-xs text-muted-foreground">{m.email}</p>
-                            </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                            onClick={() => unassignMember(role.id, m.id)}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
+                <Select
+                  value={currentRoleId}
+                  onValueChange={(value) => handleAssignRole(member.id, value)}
+                >
+                  <SelectTrigger className="w-[180px] sm:w-[220px]">
+                    <SelectValue placeholder="Sélectionner un rôle" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">
+                      <span className="text-muted-foreground">Aucun rôle</span>
+                    </SelectItem>
+                    {roles.map(role => (
+                      <SelectItem key={role.id} value={role.id}>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${role.color}`} />
+                          {role.name}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                  <Button variant="outline" size="sm" className="mt-3 gap-1.5" onClick={() => openAssign(role.id)}>
-                    <UserPlus className="h-3.5 w-3.5" />
-                    Assigner un membre
-                  </Button>
-                </CardContent>
-              )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </CardContent>
             </Card>
           );
         })}
 
-        {filteredRoles.length === 0 && (
+        {filteredMembers.length === 0 && (
           <div className="text-center py-12 text-muted-foreground">
-            <Shield className="h-10 w-10 mx-auto mb-3 opacity-30" />
-            <p>Aucun rôle trouvé</p>
+            <Users className="h-10 w-10 mx-auto mb-3 opacity-30" />
+            <p>Aucun membre trouvé</p>
           </div>
         )}
       </div>
 
-      {/* Create/Edit Dialog */}
-      <Dialog open={editDialog.open} onOpenChange={open => !open && setEditDialog({ open: false })}>
+      {/* Create/Edit Role Dialog */}
+      <Dialog open={roleDialog.open} onOpenChange={open => !open && setRoleDialog({ open: false })}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editDialog.role ? 'Modifier le rôle' : 'Nouveau rôle'}</DialogTitle>
+            <DialogTitle>{roleDialog.role ? 'Modifier le rôle' : 'Nouveau rôle'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -283,55 +228,11 @@ export default function RolesSettingsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialog({ open: false })}>Annuler</Button>
-            <Button onClick={handleSave} disabled={!formName.trim()}>
-              {editDialog.role ? 'Enregistrer' : 'Créer'}
+            <Button variant="outline" onClick={() => setRoleDialog({ open: false })}>Annuler</Button>
+            <Button onClick={handleSaveRole} disabled={!formName.trim()}>
+              {roleDialog.role ? 'Enregistrer' : 'Créer'}
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Assign Member Dialog */}
-      <Dialog open={assignDialog.open} onOpenChange={open => !open && setAssignDialog({ open: false })}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Assigner un membre</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Rechercher un membre…"
-                value={memberSearch}
-                onChange={e => setMemberSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="max-h-60 overflow-y-auto space-y-1">
-              {assignDialog.roleId && getUnassignedMembers(assignDialog.roleId).map(m => (
-                <button
-                  key={m.id}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent/10 transition-colors text-left"
-                  onClick={() => {
-                    assignMember(assignDialog.roleId!, m.id);
-                  }}
-                >
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className={`${m.avatar_color} text-white text-xs font-medium`}>
-                      {m.avatar_initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{m.name}</p>
-                    <p className="text-xs text-muted-foreground">{m.email}</p>
-                  </div>
-                </button>
-              ))}
-              {assignDialog.roleId && getUnassignedMembers(assignDialog.roleId).length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">Tous les membres sont déjà assignés</p>
-              )}
-            </div>
-          </div>
         </DialogContent>
       </Dialog>
 
