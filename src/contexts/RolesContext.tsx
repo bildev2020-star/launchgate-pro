@@ -1,35 +1,27 @@
-import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, ReactNode, useEffect } from 'react';
 import type { Role } from '@/types/project';
-import { mockTeamMembers, type TeamMember } from '@/data/teamMembers';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface RoleConfig {
   id: string;
   name: Role;
   description: string;
-  color: string; // HSL-based tailwind token
+  color: string;
 }
 
-const DEFAULT_ROLES: RoleConfig[] = [
-  { id: 'r-01', name: 'Business Developer', description: 'Développement commercial et prospection', color: 'bg-chart-1' },
-  { id: 'r-02', name: 'Marketing', description: 'Stratégie marketing et communication', color: 'bg-chart-2' },
-  { id: 'r-03', name: 'AR', description: 'Affaires réglementaires', color: 'bg-chart-3' },
-  { id: 'r-04', name: 'Supply', description: 'Approvisionnement et logistique', color: 'bg-chart-4' },
-  { id: 'r-05', name: 'QC', description: 'Contrôle qualité', color: 'bg-chart-5' },
-  { id: 'r-06', name: 'Bureau Méthodes', description: 'Industrialisation et méthodes', color: 'bg-chart-1' },
-  { id: 'r-07', name: 'Validation', description: 'Validation des processus et équipements', color: 'bg-chart-2' },
-  { id: 'r-08', name: 'Ordonnancement', description: 'Planification de la production', color: 'bg-chart-3' },
-  { id: 'r-09', name: 'Production', description: 'Fabrication et conditionnement', color: 'bg-chart-4' },
-];
-
-interface RoleAssignment {
-  roleId: string;
-  memberId: string;
+export interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  avatar_initials: string;
+  avatar_color: string;
 }
 
 interface RolesContextValue {
   roles: RoleConfig[];
-  assignments: RoleAssignment[];
   members: TeamMember[];
+  loading: boolean;
   addRole: (name: string, description: string) => void;
   updateRole: (id: string, updates: Partial<Pick<RoleConfig, 'name' | 'description' | 'color'>>) => void;
   deleteRole: (id: string) => void;
@@ -41,113 +33,76 @@ interface RolesContextValue {
 
 const RolesContext = createContext<RolesContextValue | null>(null);
 
-const STORAGE_KEY = 'roles-config';
-const ASSIGNMENTS_KEY = 'roles-assignments';
-
-function loadRoles(): RoleConfig[] {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch {}
-  return structuredClone(DEFAULT_ROLES);
-}
-
-function loadAssignments(): RoleAssignment[] {
-  try {
-    const stored = localStorage.getItem(ASSIGNMENTS_KEY);
-    if (stored) return JSON.parse(stored);
-  } catch {}
-  // Default: assign members to their matching role
-  const roles = loadRoles();
-  return mockTeamMembers.map(m => {
-    const role = roles.find(r => r.name === m.role);
-    return role ? { roleId: role.id, memberId: m.id } : null;
-  }).filter(Boolean) as RoleAssignment[];
-}
-
 let nextId = Date.now();
 const genId = () => `r-${++nextId}`;
-
 const ROLE_COLORS = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5'];
 
 export function RolesProvider({ children }: { children: ReactNode }) {
-  const [roles, setRoles] = useState<RoleConfig[]>(loadRoles);
-  const [assignments, setAssignments] = useState<RoleAssignment[]>(loadAssignments);
+  const [roles, setRoles] = useState<RoleConfig[]>([]);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const persist = useCallback((r: RoleConfig[]) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(r));
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    const [rRes, mRes] = await Promise.all([
+      supabase.from('role_configs').select('*'),
+      supabase.from('team_members').select('*'),
+    ]);
+    if (rRes.data) setRoles(rRes.data.map((r: any) => ({ id: r.id, name: r.name as Role, description: r.description, color: r.color })));
+    if (mRes.data) setMembers(mRes.data);
+    setLoading(false);
   }, []);
-  const persistAssignments = useCallback((a: RoleAssignment[]) => {
-    localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(a));
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  const addRole = useCallback(async (name: string, description: string) => {
+    const id = genId();
+    const color = ROLE_COLORS[roles.length % ROLE_COLORS.length];
+    await supabase.from('role_configs').insert({ id, name, description, color } as any);
+    setRoles(prev => [...prev, { id, name: name as Role, description, color }]);
+  }, [roles.length]);
+
+  const updateRole = useCallback(async (id: string, updates: Partial<Pick<RoleConfig, 'name' | 'description' | 'color'>>) => {
+    await supabase.from('role_configs').update(updates as any).eq('id', id);
+    setRoles(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
   }, []);
 
-  const addRole = useCallback((name: string, description: string) => {
-    setRoles(prev => {
-      const next = [...prev, { id: genId(), name: name as Role, description, color: ROLE_COLORS[prev.length % ROLE_COLORS.length] }];
-      persist(next);
-      return next;
-    });
-  }, [persist]);
+  const deleteRole = useCallback(async (id: string) => {
+    await supabase.from('role_configs').delete().eq('id', id);
+    setRoles(prev => prev.filter(r => r.id !== id));
+  }, []);
 
-  const updateRole = useCallback((id: string, updates: Partial<Pick<RoleConfig, 'name' | 'description' | 'color'>>) => {
-    setRoles(prev => {
-      const next = prev.map(r => r.id === id ? { ...r, ...updates } : r);
-      persist(next);
-      return next;
-    });
-  }, [persist]);
+  // For role assignment, we update the member's role field directly
+  const assignMember = useCallback(async (roleId: string, memberId: string) => {
+    const role = roles.find(r => r.id === roleId);
+    if (!role) return;
+    await supabase.from('team_members').update({ role: role.name } as any).eq('id', memberId);
+    setMembers(prev => prev.map(m => m.id === memberId ? { ...m, role: role.name } : m));
+  }, [roles]);
 
-  const deleteRole = useCallback((id: string) => {
-    setRoles(prev => {
-      const next = prev.filter(r => r.id !== id);
-      persist(next);
-      return next;
-    });
-    setAssignments(prev => {
-      const next = prev.filter(a => a.roleId !== id);
-      persistAssignments(next);
-      return next;
-    });
-  }, [persist, persistAssignments]);
-
-  const assignMember = useCallback((roleId: string, memberId: string) => {
-    setAssignments(prev => {
-      if (prev.some(a => a.roleId === roleId && a.memberId === memberId)) return prev;
-      const next = [...prev, { roleId, memberId }];
-      persistAssignments(next);
-      return next;
-    });
-  }, [persistAssignments]);
-
-  const unassignMember = useCallback((roleId: string, memberId: string) => {
-    setAssignments(prev => {
-      const next = prev.filter(a => !(a.roleId === roleId && a.memberId === memberId));
-      persistAssignments(next);
-      return next;
-    });
-  }, [persistAssignments]);
-
-  const members = mockTeamMembers;
+  const unassignMember = useCallback(async (_roleId: string, memberId: string) => {
+    await supabase.from('team_members').update({ role: '' } as any).eq('id', memberId);
+    setMembers(prev => prev.map(m => m.id === memberId ? { ...m, role: '' } : m));
+  }, []);
 
   const getMembersForRole = useCallback((roleId: string) => {
-    const memberIds = assignments.filter(a => a.roleId === roleId).map(a => a.memberId);
-    return members.filter(m => memberIds.includes(m.id));
-  }, [assignments, members]);
+    const role = roles.find(r => r.id === roleId);
+    if (!role) return [];
+    return members.filter(m => m.role === role.name);
+  }, [roles, members]);
 
   const getRolesForMember = useCallback((memberId: string) => {
-    const roleIds = assignments.filter(a => a.memberId === memberId).map(a => a.roleId);
-    return roles.filter(r => roleIds.includes(r.id));
-  }, [assignments, roles]);
+    const member = members.find(m => m.id === memberId);
+    if (!member || !member.role) return [];
+    return roles.filter(r => r.name === member.role);
+  }, [roles, members]);
 
   const value = useMemo(() => ({
-    roles, assignments, members,
+    roles, members, loading,
     addRole, updateRole, deleteRole,
     assignMember, unassignMember,
     getMembersForRole, getRolesForMember,
-  }), [roles, assignments, members, addRole, updateRole, deleteRole, assignMember, unassignMember, getMembersForRole, getRolesForMember]);
+  }), [roles, members, loading, addRole, updateRole, deleteRole, assignMember, unassignMember, getMembersForRole, getRolesForMember]);
 
   return (
     <RolesContext.Provider value={value}>
