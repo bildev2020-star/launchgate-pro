@@ -1,7 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useState } from 'react';
 import { useProjects } from '@/contexts/ProjectsContext';
-import { mockDocuments, mockBatches, mockAuditLog } from '@/data/mockData';
+import { useProjectDocuments, useProjectBatches, useProjectAuditLog } from '@/hooks/useProjectDetail';
 import { StatusBadge } from '@/components/StatusBadge';
 import { StepTimeline } from '@/components/StepTimeline';
 import { TaskCard } from '@/components/TaskCard';
@@ -33,7 +33,7 @@ const taskStatusColumns: { status: GlobalStatus; label: string }[] = [
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { projects, tasks: allTasks, setTasks, computedSteps } = useProjects();
+  const { projects, tasks: allTasks, setTasks, computedSteps, updateTaskInDb } = useProjects();
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [stepFilter, setStepFilter] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -51,9 +51,9 @@ export default function ProjectDetailPage() {
 
   const steps = computedSteps(id!);
   const projectTasks = allTasks.filter((t) => t.project_id === id);
-  const documents = mockDocuments.filter((d) => d.project_id === id);
-  const batches = mockBatches.filter((b) => b.project_id === id);
-  const auditLog = mockAuditLog.filter((a) => a.project_id === id);
+  const documents = useProjectDocuments(id);
+  const batches = useProjectBatches(id);
+  const auditLog = useProjectAuditLog(id);
 
   const doneSteps = steps.filter((s) => s.statut === 'Done' || s.statut === 'Approved').length;
   const doneTasks = projectTasks.filter((t) => t.statut === 'Done' || t.statut === 'Approved').length;
@@ -73,22 +73,27 @@ export default function ProjectDetailPage() {
   const selectedTask = selectedTaskId ? projectTasks.find((t) => t.id === selectedTaskId) : undefined;
 
   const handleStatusChange = (taskId: string, newStatus: GlobalStatus) => {
+    const updated_at = new Date().toISOString().split('T')[0];
+    const updates: any = { statut: newStatus, updated_at, blocking_reason: newStatus !== 'Blocked' ? null : undefined };
     setTasks((prev) =>
       prev.map((t) =>
         t.id === taskId
-          ? { ...t, statut: newStatus, updated_at: new Date().toISOString().split('T')[0], blocking_reason: newStatus !== 'Blocked' ? undefined : t.blocking_reason }
+          ? { ...t, statut: newStatus, updated_at, blocking_reason: newStatus !== 'Blocked' ? undefined : t.blocking_reason }
           : t
       )
     );
+    updateTaskInDb(taskId, updates);
     toast.success(`Statut mis à jour → ${newStatus}`);
   };
 
   const handleAssigneeChange = (taskId: string, assigneeId: string | undefined) => {
+    const updated_at = new Date().toISOString().split('T')[0];
     setTasks((prev) =>
       prev.map((t) =>
-        t.id === taskId ? { ...t, assignee: assigneeId, updated_at: new Date().toISOString().split('T')[0] } : t
+        t.id === taskId ? { ...t, assignee: assigneeId, updated_at } : t
       )
     );
+    updateTaskInDb(taskId, { assignee: assigneeId ?? null, updated_at } as any);
     toast.success(assigneeId ? 'Tâche affectée' : 'Affectation retirée');
   };
 

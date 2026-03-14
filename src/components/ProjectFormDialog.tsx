@@ -68,9 +68,10 @@ export function ProjectFormDialog({ open, onOpenChange, project, onCreated }: Pr
         toast({ title: 'Projet mis à jour' });
       }
     } else {
-      const id = addProject(form, template);
-      toast({ title: 'Projet créé', description: `${form.produit_nom} — ${template.steps.length} étapes générées depuis le template.` });
-      onCreated?.(id);
+      addProject(form, template).then(id => {
+        toast({ title: 'Projet créé', description: `${form.produit_nom} — ${template.steps.length} étapes générées depuis le template.` });
+        onCreated?.(id);
+      });
     }
     onOpenChange(false);
   };
