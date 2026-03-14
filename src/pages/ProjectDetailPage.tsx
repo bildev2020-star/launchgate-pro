@@ -1,7 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useState } from 'react';
 import { useProjects } from '@/contexts/ProjectsContext';
-import { mockDocuments, mockBatches, mockAuditLog } from '@/data/mockData';
+import { useProjectDocuments, useProjectBatches, useProjectAuditLog } from '@/hooks/useProjectDetail';
 import { StatusBadge } from '@/components/StatusBadge';
 import { StepTimeline } from '@/components/StepTimeline';
 import { TaskCard } from '@/components/TaskCard';
