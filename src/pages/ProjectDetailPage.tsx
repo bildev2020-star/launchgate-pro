@@ -51,9 +51,9 @@ export default function ProjectDetailPage() {
 
   const steps = computedSteps(id!);
   const projectTasks = allTasks.filter((t) => t.project_id === id);
-  const documents = mockDocuments.filter((d) => d.project_id === id);
-  const batches = mockBatches.filter((b) => b.project_id === id);
-  const auditLog = mockAuditLog.filter((a) => a.project_id === id);
+  const documents = useProjectDocuments(id);
+  const batches = useProjectBatches(id);
+  const auditLog = useProjectAuditLog(id);
 
   const doneSteps = steps.filter((s) => s.statut === 'Done' || s.statut === 'Approved').length;
   const doneTasks = projectTasks.filter((t) => t.statut === 'Done' || t.statut === 'Approved').length;
