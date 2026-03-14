@@ -33,7 +33,7 @@ const taskStatusColumns: { status: GlobalStatus; label: string }[] = [
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { projects, tasks: allTasks, setTasks, computedSteps } = useProjects();
+  const { projects, tasks: allTasks, setTasks, computedSteps, updateTaskInDb } = useProjects();
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [stepFilter, setStepFilter] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
