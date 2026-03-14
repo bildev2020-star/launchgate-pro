@@ -73,22 +73,27 @@ export default function ProjectDetailPage() {
   const selectedTask = selectedTaskId ? projectTasks.find((t) => t.id === selectedTaskId) : undefined;
 
   const handleStatusChange = (taskId: string, newStatus: GlobalStatus) => {
+    const updated_at = new Date().toISOString().split('T')[0];
+    const updates: any = { statut: newStatus, updated_at, blocking_reason: newStatus !== 'Blocked' ? null : undefined };
     setTasks((prev) =>
       prev.map((t) =>
         t.id === taskId
-          ? { ...t, statut: newStatus, updated_at: new Date().toISOString().split('T')[0], blocking_reason: newStatus !== 'Blocked' ? undefined : t.blocking_reason }
+          ? { ...t, statut: newStatus, updated_at, blocking_reason: newStatus !== 'Blocked' ? undefined : t.blocking_reason }
           : t
       )
     );
+    updateTaskInDb(taskId, updates);
     toast.success(`Statut mis à jour → ${newStatus}`);
   };
 
   const handleAssigneeChange = (taskId: string, assigneeId: string | undefined) => {
+    const updated_at = new Date().toISOString().split('T')[0];
     setTasks((prev) =>
       prev.map((t) =>
-        t.id === taskId ? { ...t, assignee: assigneeId, updated_at: new Date().toISOString().split('T')[0] } : t
+        t.id === taskId ? { ...t, assignee: assigneeId, updated_at } : t
       )
     );
+    updateTaskInDb(taskId, { assignee: assigneeId ?? null, updated_at } as any);
     toast.success(assigneeId ? 'Tâche affectée' : 'Affectation retirée');
   };
 
